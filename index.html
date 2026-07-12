@@ -336,6 +336,7 @@ function persistData(){
   }
 
   persistSupabaseData();
+  persistSupabaseProfiles();
 }
 
 function getSupabaseClient(){
@@ -415,6 +416,41 @@ async function deleteSupabaseProduct(id){
   }
 }
 
+function normalizeProfileRow(item){
+  return {
+    name: item.name || 'Unnamed',
+    email: item.email || '',
+    phone: item.phone || '',
+    address: item.address || '',
+    password: item.password || '',
+    joined: item.joined || 'Recently',
+    status: item.status || 'Active'
+  };
+}
+
+function toSupabaseProfile(user){
+  return {
+    name: user.name,
+    email: user.email,
+    phone: user.phone || '',
+    address: user.address || '',
+    password: user.password,
+    joined: user.joined || 'Recently',
+    status: user.status || 'Active'
+  };
+}
+
+async function persistSupabaseProfiles(){
+  const client = getSupabaseClient();
+  if (!client || !state.registeredUsers.length) return;
+
+  try {
+    await client.from('app_users').upsert(state.registeredUsers.map(toSupabaseProfile), { onConflict: 'email' });
+  } catch (error) {
+    console.warn('Supabase profiles sync failed:', error);
+  }
+}
+
 async function hydrateData(){
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -462,6 +498,32 @@ async function hydrateData(){
     }
   } catch (error) {
     console.warn('Supabase sync skipped:', error);
+  }
+
+  try {
+    const { data: profileRows, error: profileError } = await client.from('app_users').select('*').order('email', { ascending: true });
+    if (profileError) throw profileError;
+
+    if (Array.isArray(profileRows) && profileRows.length) {
+      const merged = profileRows.map(normalizeProfileRow);
+      // keep any account created on this device that hasn't synced yet
+      state.registeredUsers.forEach(local => {
+        if (!merged.some(m => m.email.toLowerCase() === local.email.toLowerCase())) merged.push(local);
+      });
+      state.registeredUsers = merged;
+
+      // reflect newly-known accounts in the admin "Manage Users" list
+      merged.forEach(p => {
+        if (!state.users.some(u => u.email.toLowerCase() === p.email.toLowerCase())) {
+          state.users.push({ name: p.name, email: p.email, joined: p.joined, orders: 0, status: p.status });
+        }
+      });
+      persistData();
+    } else if (state.registeredUsers.length) {
+      await client.from('app_users').upsert(state.registeredUsers.map(toSupabaseProfile), { onConflict: 'email' });
+    }
+  } catch (error) {
+    console.warn('Supabase profile sync skipped:', error);
   }
 }
 
@@ -1059,11 +1121,8 @@ function pageAdminLogin(){
         <h1 style="font-size:1.45rem;">Admin Portal</h1>
         <p class="muted" style="font-size:0.85rem; margin-top:0.3rem;">Restricted access — FreshMart staff only.</p>
       </div>
-      <div style="background:rgba(143,201,164,0.15); border:1px solid var(--sage-300); border-radius:var(--radius-s); padding:0.8rem 1rem; font-size:0.75rem; color:var(--sage-300); font-weight:600; margin-bottom:1.3rem; font-family:var(--mono);">
-        Demo credentials: ${ADMIN_CREDENTIALS.email} / ${ADMIN_CREDENTIALS.password}
-      </div>
       <form data-action="admin-login">
-        <div class="field"><label for="adminEmail">Admin email</label><input type="email" id="adminEmail" placeholder="admin@freshmart.com" required></div>
+        <div class="field"><label for="adminEmail">Admin email</label><input type="email" id="adminEmail" placeholder="you@freshmart.com" required></div>
         <div class="field"><label for="adminPassword">Password</label><input type="password" id="adminPassword" placeholder="Enter password" required></div>
         <button type="submit" class="btn btn-primary btn-block">Sign In to Dashboard</button>
       </form>
@@ -1415,7 +1474,7 @@ document.addEventListener('submit', e=>{
       toast('An account with this email already exists — please sign in.', 'alert-circle');
       return;
     }
-    const newUser = {name, email, phone, address, password};
+    const newUser = {name, email, phone, address, password, joined:'Today', status:'Active'};
     state.registeredUsers.push(newUser);
     state.users.push({name, email, joined:'Today', orders:0, status:'Active'});
     persistData();
