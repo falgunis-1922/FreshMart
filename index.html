@@ -330,7 +330,7 @@ const PRODUCTS = [
 ];
 
 let state = {
-  cart: [ {productId:1, qty:2}, {productId:7, qty:1}, {productId:9, qty:1} ],
+  cart: [],
   orders: [
     {id:'ORD-8390', date:'July 10, 2026 · 4:15 PM', status:'Delivered',
      items:[{name:'Organic Honeycrisp Apples', qty:5, price:14.95},{name:'Valencia Oranges', qty:2, price:3.98}],
@@ -913,14 +913,14 @@ function pageCheckout(){
           <div class="ticket" style="padding:1.8rem;">
             <h3 style="font-size:1.05rem; display:flex; gap:0.5rem; align-items:center; border-bottom:1px solid var(--line); padding-bottom:0.8rem; margin-bottom:1.2rem;"><i data-lucide="truck" style="width:18px;height:18px; color:var(--green-500);"></i>Shipping address</h3>
             <div class="grid grid-2">
-              ${field('Recipient name','text','e.g. Aditi Sharma', state.currentUser ? state.currentUser.name : '')}
-              ${field('Phone number','tel','e.g. +91 98765 43210', state.currentUser ? state.currentUser.phone : '')}
+              ${field('Recipient name','text','e.g. Aditi Sharma', state.currentUser ? state.currentUser.name : '', {id:'c-name', required:true})}
+              ${field('Phone number','tel','e.g. +91 98765 43210', state.currentUser ? state.currentUser.phone : '', {id:'c-phone', required:true})}
             </div>
-            ${field('Street address','text','House no., street, area', state.currentUser ? state.currentUser.address : '')}
+            ${field('Street address','text','House no., street, area', state.currentUser ? state.currentUser.address : '', {id:'c-street', required:true})}
             <div class="grid grid-3">
-              ${field('City','text','City')}
-              ${field('State','text','State')}
-              ${field('ZIP code','text','ZIP code')}
+              ${field('City','text','City','',{id:'c-city', required:true})}
+              ${field('State','text','State','',{id:'c-state', required:true})}
+              ${field('ZIP code','text','ZIP code','',{id:'c-zip', required:true})}
             </div>
           </div>
           <div class="ticket" style="padding:1.8rem;">
@@ -932,9 +932,9 @@ function pageCheckout(){
             </div>
             ${state.paymentMethod==='card' ? `
             <div class="grid grid-2" style="margin-top:1.2rem; padding-top:1.2rem; border-top:1px solid var(--line);">
-              <div style="grid-column:span 2;">${field('Card number','text','4111 2222 3333 4444')}</div>
-              ${field('Expiration','text','MM/YY')}
-              ${field('CVV','password','123')}
+              <div style="grid-column:span 2;">${field('Card number','text','4111 2222 3333 4444','',{id:'c-card', required:true})}</div>
+              ${field('Expiration','text','MM/YY','',{id:'c-exp', required:true})}
+              ${field('CVV','password','123','',{id:'c-cvv', required:true})}
             </div>` : ''}
           </div>
         </div>
@@ -958,7 +958,7 @@ function pageCheckout(){
     </form>
   </div>`;
 }
-const field = (label,type,ph,val) => `<div class="field"><label>${label}</label><input type="${type}" placeholder="${ph}" value="${val||''}"></div>`;
+const field = (label,type,ph,val,opts={}) => `<div class="field"><label>${label}</label><input type="${type}" placeholder="${ph}" value="${val||''}" ${opts.id?`id="${opts.id}"`:''} ${opts.required?'required':''}></div>`;
 const paymentOption = (val,label,icon) => `<label class="radio-card ${state.paymentMethod===val?'selected':''}" data-action="payment" data-val="${val}"><input type="radio" name="pay" ${state.paymentMethod===val?'checked':''} style="accent-color:var(--green-500);"><span style="font-weight:700; flex:1;">${label}</span><i data-lucide="${icon}" style="width:17px;height:17px; color:var(--ink-faint);"></i></label>`;
 
 /* ============================================================
@@ -1401,6 +1401,11 @@ document.addEventListener('click', e=>{
     return;
   }
   if(action === 'add'){
+    if(!state.currentUser){
+      toast('Please sign in to add items to your cart', 'lock');
+      go('/login');
+      return;
+    }
     const id = +t.dataset.id;
     const existing = state.cart.find(i=>i.productId===id);
     if(existing) existing.qty++; else state.cart.push({productId:id, qty:1});
@@ -1588,11 +1593,16 @@ document.addEventListener('submit', e=>{
     render();
   }
   if(action === 'place-order'){
+    const name = document.getElementById('c-name').value.trim();
+    const street = document.getElementById('c-street').value.trim();
+    const city = document.getElementById('c-city').value.trim();
+    const stateVal = document.getElementById('c-state').value.trim();
+    const zip = document.getElementById('c-zip').value.trim();
     const id = 'ORD-' + Math.floor(1000 + Math.random()*8999);
     state.orders.unshift({
       id, date:'Just now', status:'Processing',
       items: cartLines().map(l=>({name:l.product.name, qty:l.qty, price:l.product.price*l.qty})),
-      total: cartTotal(), address:'123 Meadow Lane, Santa Clara, CA 95050',
+      total: cartTotal(), address:`${name} · ${street}, ${city}, ${stateVal} ${zip}`,
       payment: state.paymentMethod==='card'?'Credit / Debit Card':state.paymentMethod==='paypal'?'PayPal Wallet':'Cash on Delivery'
     });
     state.cart = []; state.promo = 0;
