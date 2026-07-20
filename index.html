@@ -350,8 +350,10 @@ let state = {
   promo: 0,
   openOrders: new Set(),
   activeThumb: 0,
-  paymentMethod: 'card',
+  paymentMethod: 'cod',
   nextProductId: 11,
+  checkoutStep: 1,
+  checkoutData: { firstName:'', lastName:'', email:'', phone:'', street:'', city:'', zip:'', notes:'', slot:'express' },
 };
 
 const STORAGE_KEY = 'freshmart-db-v1';
@@ -900,66 +902,162 @@ const billRow = (label,val,green,red) => `<div style="display:flex; justify-cont
 /* ============================================================
    PAGE: CHECKOUT
    ============================================================ */
+const DELIVERY_SLOTS = [
+  {val:'express', label:'Express (ready in 9 minutes)', icon:'zap'},
+  {val:'morning', label:'Morning (7 AM – 11 AM)', icon:'sunrise'},
+  {val:'afternoon', label:'Afternoon (12 PM – 4 PM)', icon:'sun'},
+  {val:'evening', label:'Evening (5 PM – 9 PM)', icon:'sunset'},
+];
+const slotLabel = v => (DELIVERY_SLOTS.find(s=>s.val===v) || DELIVERY_SLOTS[0]).label;
+
 function pageCheckout(){
   const lines = cartLines();
   if(!lines.length){ go('/cart'); return ''; }
+  const step = state.checkoutStep || 1;
   return `
-  <div class="container" style="padding:2.2rem 0 4.5rem;">
-    <h1 style="font-size:1.8rem;">Secure Checkout</h1>
-    <p class="muted" style="margin-top:0.3rem; font-size:0.85rem;">Provide shipping details to complete your instant order.</p>
-    <form id="checkoutForm" data-action="place-order" style="margin-top:1.8rem;">
-      <div class="grid split-grid" style="grid-template-columns:2fr 1fr; gap:2.5rem; align-items:start;">
-        <div style="display:flex; flex-direction:column; gap:1.6rem;">
-          <div class="ticket" style="padding:1.8rem;">
-            <h3 style="font-size:1.05rem; display:flex; gap:0.5rem; align-items:center; border-bottom:1px solid var(--line); padding-bottom:0.8rem; margin-bottom:1.2rem;"><i data-lucide="truck" style="width:18px;height:18px; color:var(--green-500);"></i>Shipping address</h3>
-            <div class="grid grid-2">
-              ${field('Recipient name','text','e.g. Aditi Sharma', state.currentUser ? state.currentUser.name : '', {id:'c-name', required:true})}
-              ${field('Phone number','tel','e.g. +91 98765 43210', state.currentUser ? state.currentUser.phone : '', {id:'c-phone', required:true})}
-            </div>
-            ${field('Street address','text','House no., street, area', state.currentUser ? state.currentUser.address : '', {id:'c-street', required:true})}
-            <div class="grid grid-3">
-              ${field('City','text','City','',{id:'c-city', required:true})}
-              ${field('State','text','State','',{id:'c-state', required:true})}
-              ${field('ZIP code','text','ZIP code','',{id:'c-zip', required:true})}
-            </div>
-          </div>
-          <div class="ticket" style="padding:1.8rem;">
-            <h3 style="font-size:1.05rem; display:flex; gap:0.5rem; align-items:center; border-bottom:1px solid var(--line); padding-bottom:0.8rem; margin-bottom:1.2rem;"><i data-lucide="credit-card" style="width:18px;height:18px; color:var(--green-500);"></i>Payment method</h3>
-            <div style="display:flex; flex-direction:column; gap:0.7rem;">
-              ${paymentOption('card','Credit / Debit Card','credit-card')}
-              ${paymentOption('paypal','PayPal Wallet','wallet')}
-              ${paymentOption('cod','Cash on Delivery','banknote')}
-            </div>
-            ${state.paymentMethod==='card' ? `
-            <div class="grid grid-2" style="margin-top:1.2rem; padding-top:1.2rem; border-top:1px solid var(--line);">
-              <div style="grid-column:span 2;">${field('Card number','text','4111 2222 3333 4444','',{id:'c-card', required:true})}</div>
-              ${field('Expiration','text','MM/YY','',{id:'c-exp', required:true})}
-              ${field('CVV','password','123','',{id:'c-cvv', required:true})}
-            </div>` : ''}
-          </div>
-        </div>
-        <div class="ticket" style="padding:1.6rem; position:sticky; top:6.5rem;">
-          <h3 style="font-size:1.05rem; border-bottom:1px solid var(--line); padding-bottom:0.8rem; margin-bottom:1rem;">Your order</h3>
-          <div style="display:flex; flex-direction:column; gap:0.6rem; max-height:170px; overflow-y:auto;">
-            ${lines.map(l=>`<div style="display:flex; justify-content:space-between; font-size:0.82rem;"><span>${l.product.name} <span class="muted">x ${l.qty}</span></span><span style="font-family:var(--mono); font-weight:700;">${money(l.product.price*l.qty)}</span></div>`).join('')}
-          </div>
-          <div style="margin-top:1rem; padding-top:0.8rem; border-top:1px solid var(--line);">
-            ${billRow('Subtotal', money(cartSubtotal()))}
-            ${billRow('Shipping', 'FREE', true)}
-            ${state.promo>0 ? billRow('Discount', '−'+money(discountAmt()), false, true) : ''}
-          </div>
-          <div style="display:flex; justify-content:space-between; align-items:baseline; margin-top:0.8rem; padding-top:0.8rem; border-top:1px solid var(--line);">
-            <span style="font-weight:800;">Total</span>
-            <span style="font-family:var(--mono); font-weight:800; font-size:1.35rem; color:var(--green-600);">${money(cartTotal())}</span>
-          </div>
-          <button type="submit" class="btn btn-primary btn-block" style="margin-top:1.2rem;">Place order (${money(cartTotal())}) <i data-lucide="shield-check" style="width:15px;height:15px;"></i></button>
-        </div>
+  <div class="container" style="padding:2.2rem 0 4.5rem; max-width:660px;">
+    <div class="ticket" style="padding:0;">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:1.4rem 1.8rem; border-bottom:1px solid var(--line);">
+        <h2 style="font-size:1.3rem; display:flex; align-items:center; gap:0.6rem;"><i data-lucide="shopping-bag" style="width:20px;height:20px; color:var(--green-500);"></i>Checkout</h2>
+        <a href="#/cart" aria-label="Close checkout" style="width:2rem; height:2rem; border-radius:50%; display:flex; align-items:center; justify-content:center; color:var(--ink-faint);"><i data-lucide="x" style="width:18px;height:18px;"></i></a>
       </div>
-    </form>
+      <div style="display:flex; background:var(--cream); border-bottom:1px solid var(--line);">
+        ${checkoutTab(1,'Delivery',step)}
+        ${checkoutTab(2,'Payment',step)}
+        ${checkoutTab(3,'Review',step)}
+      </div>
+      <div style="padding:1.8rem;">
+        ${step===1 ? checkoutStepDelivery() : step===2 ? checkoutStepPayment(lines) : checkoutStepReview(lines)}
+      </div>
+    </div>
   </div>`;
 }
+
+const checkoutTab = (n,label,current) => {
+  const state_ = current===n ? 'active' : current>n ? 'done' : 'todo';
+  const color = state_==='active' ? 'var(--green-600)' : state_==='done' ? 'var(--ink-soft)' : 'var(--ink-faint)';
+  return `<button type="button" class="checkout-tab" data-action="checkout-goto" data-step="${n}" ${current<n?'disabled':''}
+    style="flex:1; padding:1rem 0.5rem; text-align:center; background:none; border:none; font-family:var(--mono); font-size:0.72rem; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:${color}; border-bottom:2px solid ${state_==='active'?'var(--green-500)':'transparent'}; cursor:${current>=n?'pointer':'default'};">
+    ${n} · ${label}</button>`;
+};
+
+function checkoutStepDelivery(){
+  const d = state.checkoutData;
+  const u = state.currentUser;
+  const nameParts = (u && !d.firstName) ? u.name.split(' ') : [];
+  const firstName = d.firstName || nameParts[0] || '';
+  const lastName = d.lastName || nameParts.slice(1).join(' ') || '';
+  const email = d.email || (u ? u.email : '');
+  const phone = d.phone || (u ? u.phone : '') || '';
+  const street = d.street || (u ? u.address : '') || '';
+  return `
+  <form data-action="checkout-step1">
+    <span class="eyebrow"><i data-lucide="package" style="width:13px;height:13px;"></i> Contact &amp; delivery details</span>
+    <div class="grid grid-2" style="margin-top:1.1rem;">
+      ${field('First name','text','Falguni', firstName, {id:'co-first', required:true})}
+      ${field('Last name','text','Sharma', lastName, {id:'co-last', required:true})}
+    </div>
+    ${field('Email','email','you@example.com', email, {id:'co-email', required:true})}
+    ${field('Phone number','tel','+91 98765 43210', phone, {id:'co-phone', required:true})}
+    ${field('Street address','text','House no., street name, area', street, {id:'co-street', required:true})}
+    <div class="grid grid-2">
+      ${field('City','text','City', d.city, {id:'co-city', required:true})}
+      ${field('ZIP / PIN code','text','ZIP code', d.zip, {id:'co-zip', required:true})}
+    </div>
+    <div class="field">
+      <label>Delivery instructions <span class="muted" style="text-transform:none; font-weight:500;">(optional)</span></label>
+      <textarea id="co-notes" rows="2" style="border:1.5px solid var(--line); border-radius:var(--radius-s); padding:0.72rem 0.9rem; width:100%; resize:none; font-family:var(--body);" placeholder="Ring the bell twice, leave at door, etc.">${d.notes||''}</textarea>
+    </div>
+    <span class="eyebrow" style="margin-top:0.6rem; display:inline-flex;"><i data-lucide="truck" style="width:13px;height:13px;"></i> Delivery slot</span>
+    <div class="field" style="margin-top:0.6rem;">
+      <select id="co-slot" style="border:1.5px solid var(--line); border-radius:var(--radius-s); padding:0.72rem 0.9rem; width:100%; font-family:var(--body); font-size:0.9rem;">
+        ${DELIVERY_SLOTS.map(s=>`<option value="${s.val}" ${d.slot===s.val?'selected':''}>${s.label}</option>`).join('')}
+      </select>
+    </div>
+    <div style="display:flex; gap:0.8rem; margin-top:1.4rem;">
+      <a href="#/cart" class="btn btn-outline" style="flex:1;"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i> Back to cart</a>
+      <button type="submit" class="btn btn-primary" style="flex:2;">Continue to payment <i data-lucide="arrow-right" style="width:15px;height:15px;"></i></button>
+    </div>
+  </form>`;
+}
+
+function checkoutStepPayment(lines){
+  return `
+  <form data-action="checkout-step2">
+    ${orderSummaryBlock(lines)}
+    <span class="eyebrow" style="margin-top:1.4rem; display:inline-flex;"><i data-lucide="credit-card" style="width:13px;height:13px;"></i> Payment method</span>
+    <div style="display:flex; flex-direction:column; gap:0.7rem; margin-top:0.7rem;">
+      ${paymentOption('cod','Cash on Delivery','banknote','Pay when your order arrives at your door')}
+      ${paymentOption('upi','UPI','smartphone','Google Pay, PhonePe, Paytm, BHIM')}
+      ${paymentOption('card','Credit / Debit Card','credit-card','Visa, Mastercard, RuPay')}
+    </div>
+    ${state.paymentMethod==='card' ? `
+    <div class="grid grid-2" style="margin-top:1.2rem; padding-top:1.2rem; border-top:1px solid var(--line);">
+      <div style="grid-column:span 2;">${field('Card number','text','4111 2222 3333 4444','',{id:'co-card', required:true})}</div>
+      ${field('Expiration','text','MM/YY','',{id:'co-exp', required:true})}
+      ${field('CVV','password','123','',{id:'co-cvv', required:true})}
+    </div>` : ''}
+    <div style="display:flex; gap:0.8rem; margin-top:1.4rem;">
+      <button type="button" class="btn btn-outline" data-action="checkout-back" style="flex:1;"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i> Back</button>
+      <button type="submit" class="btn btn-primary" style="flex:2;">Review order <i data-lucide="arrow-right" style="width:15px;height:15px;"></i></button>
+    </div>
+  </form>`;
+}
+
+function checkoutStepReview(lines){
+  const d = state.checkoutData;
+  const payLabel = state.paymentMethod==='card' ? 'Credit / Debit Card' : state.paymentMethod==='upi' ? 'UPI' : 'Cash on Delivery';
+  const payIcon = state.paymentMethod==='card' ? 'credit-card' : state.paymentMethod==='upi' ? 'smartphone' : 'banknote';
+  return `
+  <form data-action="place-order">
+    ${orderSummaryBlock(lines)}
+    <span class="eyebrow" style="margin-top:1.4rem; display:inline-flex;"><i data-lucide="map-pin" style="width:13px;height:13px;"></i> Delivery details</span>
+    <div style="background:var(--cream); border-radius:var(--radius-s); padding:1rem 1.2rem; margin-top:0.7rem; display:flex; flex-direction:column; gap:0.55rem; font-size:0.86rem;">
+      ${reviewRow('Name', `${d.firstName} ${d.lastName}`)}
+      ${reviewRow('Email', d.email)}
+      ${reviewRow('Phone', d.phone)}
+      ${reviewRow('Address', `${d.street}, ${d.city} – ${d.zip}`)}
+      ${reviewRow('Delivery slot', slotLabel(d.slot))}
+      ${d.notes ? reviewRow('Notes', d.notes) : ''}
+    </div>
+    <span class="eyebrow" style="margin-top:1.2rem; display:inline-flex;"><i data-lucide="credit-card" style="width:13px;height:13px;"></i> Payment</span>
+    <div style="background:var(--cream); border-radius:var(--radius-s); padding:1rem 1.2rem; margin-top:0.7rem;">
+      ${reviewRow('Method', payLabel, payIcon)}
+    </div>
+    <div style="display:flex; gap:0.8rem; margin-top:1.4rem;">
+      <button type="button" class="btn btn-outline" data-action="checkout-back" style="flex:1;"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i> Back</button>
+      <button type="submit" class="btn btn-primary" style="flex:2;">Place order (${money(cartTotal())}) <i data-lucide="shield-check" style="width:15px;height:15px;"></i></button>
+    </div>
+  </form>`;
+}
+
+const reviewRow = (label,val,icon) => `<div style="display:flex; justify-content:space-between; gap:1rem;"><span class="muted">${label}</span><span style="font-weight:700; text-align:right; display:flex; align-items:center; gap:0.4rem;">${icon?`<i data-lucide="${icon}" style="width:14px;height:14px; color:var(--green-500);"></i>`:''}${val}</span></div>`;
+
+function orderSummaryBlock(lines){
+  return `
+  <div style="background:var(--cream); border-radius:var(--radius-s); padding:1.2rem;">
+    <h4 style="font-size:0.95rem; display:flex; align-items:center; gap:0.5rem; margin-bottom:0.9rem;"><i data-lucide="shopping-cart" style="width:16px;height:16px; color:var(--green-500);"></i>Order summary (${lines.reduce((s,l)=>s+l.qty,0)} items)</h4>
+    <div style="display:flex; flex-direction:column; gap:0.55rem; max-height:170px; overflow-y:auto;">
+      ${lines.map(l=>`<div style="display:flex; justify-content:space-between; align-items:center; font-size:0.85rem; gap:0.6rem;">
+        <span style="display:flex; align-items:center; gap:0.6rem; min-width:0;"><img src="${l.product.img}" style="width:1.8rem;height:1.8rem;border-radius:5px;object-fit:cover;flex-shrink:0;">
+        <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${l.product.name}</span></span>
+        <span style="white-space:nowrap; font-family:var(--mono); font-weight:700;">x${l.qty} &nbsp;${money(l.product.price*l.qty)}</span>
+      </div>`).join('')}
+    </div>
+    <div style="margin-top:0.9rem; padding-top:0.8rem; border-top:1px solid var(--line);">
+      ${billRow('Subtotal', money(cartSubtotal()))}
+      ${billRow('Delivery', 'FREE', true)}
+      ${state.promo>0 ? billRow('Discount', '−'+money(discountAmt()), false, true) : ''}
+    </div>
+    <div style="display:flex; justify-content:space-between; align-items:baseline; margin-top:0.7rem; padding-top:0.7rem; border-top:1px solid var(--line);">
+      <span style="font-weight:800;">Grand total</span>
+      <span style="font-family:var(--mono); font-weight:800; font-size:1.3rem; color:var(--green-600);">${money(cartTotal())}</span>
+    </div>
+  </div>`;
+}
+
 const field = (label,type,ph,val,opts={}) => `<div class="field"><label>${label}</label><input type="${type}" placeholder="${ph}" value="${val||''}" ${opts.id?`id="${opts.id}"`:''} ${opts.required?'required':''}></div>`;
-const paymentOption = (val,label,icon) => `<label class="radio-card ${state.paymentMethod===val?'selected':''}" data-action="payment" data-val="${val}"><input type="radio" name="pay" ${state.paymentMethod===val?'checked':''} style="accent-color:var(--green-500);"><span style="font-weight:700; flex:1;">${label}</span><i data-lucide="${icon}" style="width:17px;height:17px; color:var(--ink-faint);"></i></label>`;
+const paymentOption = (val,label,icon,sub) => `<label class="radio-card ${state.paymentMethod===val?'selected':''}" data-action="payment" data-val="${val}"><input type="radio" name="pay" ${state.paymentMethod===val?'checked':''} style="accent-color:var(--green-500);"><span style="flex:1;"><span style="font-weight:700; display:block;">${label}</span>${sub?`<span class="muted" style="font-size:0.76rem; display:block; margin-top:0.1rem;">${sub}</span>`:''}</span><i data-lucide="${icon}" style="width:19px;height:19px; color:var(--ink-faint); flex-shrink:0;"></i></label>`;
 
 /* ============================================================
    PAGE: MY ORDERS
@@ -997,7 +1095,7 @@ function orderCard(o){
         ${o.items.map(it=>`<div style="display:flex; justify-content:space-between; font-size:0.85rem;"><span>${it.name} <span class="muted">x ${it.qty}</span></span><span style="font-family:var(--mono); font-weight:700;">${money(it.price)}</span></div>`).join('')}
       </div>
       <div class="grid grid-2" style="font-size:0.8rem; color:var(--ink-soft);">
-        <div><p style="font-weight:700; color:var(--ink); margin-bottom:0.2rem;">Delivery destination</p><p>${o.address}</p></div>
+        <div><p style="font-weight:700; color:var(--ink); margin-bottom:0.2rem;">Delivery destination</p><p>${o.address}</p>${o.slot?`<p style="margin-top:0.3rem;">Slot: ${o.slot}</p>`:''}</div>
         <div><p style="font-weight:700; color:var(--ink); margin-bottom:0.2rem;">Payment method</p><p>${o.payment}</p><p style="font-weight:700; color:var(--green-600); margin-top:0.3rem;">Paid: ${money(o.total)}</p></div>
       </div>
     </div>` : ''}
@@ -1449,6 +1547,14 @@ document.addEventListener('click', e=>{
   if(action === 'logout'){ state.currentUser = null; persistData(); toast('Logged out'); go('/login'); }
   if(action === 'admin-logout'){ state.adminUser = null; persistData(); go('/admin/login'); }
   if(action === 'payment'){ state.paymentMethod = t.dataset.val; persistData(); render(); }
+  if(action === 'checkout-back'){
+    state.checkoutStep = Math.max(1, (state.checkoutStep||1) - 1);
+    render();
+  }
+  if(action === 'checkout-goto'){
+    const n = +t.dataset.step;
+    if(n <= (state.checkoutStep||1)) { state.checkoutStep = n; render(); }
+  }
   if(action === 'admin-delete-product'){
     const id = +t.dataset.id;
     if(!confirm('Delete this product? This cannot be undone.')) return;
@@ -1592,20 +1698,38 @@ document.addEventListener('submit', e=>{
     closeProductModal();
     render();
   }
+  if(action === 'checkout-step1'){
+    state.checkoutData = {
+      firstName: document.getElementById('co-first').value.trim(),
+      lastName: document.getElementById('co-last').value.trim(),
+      email: document.getElementById('co-email').value.trim(),
+      phone: document.getElementById('co-phone').value.trim(),
+      street: document.getElementById('co-street').value.trim(),
+      city: document.getElementById('co-city').value.trim(),
+      zip: document.getElementById('co-zip').value.trim(),
+      notes: document.getElementById('co-notes').value.trim(),
+      slot: document.getElementById('co-slot').value,
+    };
+    state.checkoutStep = 2;
+    render();
+  }
+  if(action === 'checkout-step2'){
+    state.checkoutStep = 3;
+    render();
+  }
   if(action === 'place-order'){
-    const name = document.getElementById('c-name').value.trim();
-    const street = document.getElementById('c-street').value.trim();
-    const city = document.getElementById('c-city').value.trim();
-    const stateVal = document.getElementById('c-state').value.trim();
-    const zip = document.getElementById('c-zip').value.trim();
+    const d = state.checkoutData;
     const id = 'ORD-' + Math.floor(1000 + Math.random()*8999);
     state.orders.unshift({
       id, date:'Just now', status:'Processing',
       items: cartLines().map(l=>({name:l.product.name, qty:l.qty, price:l.product.price*l.qty})),
-      total: cartTotal(), address:`${name} · ${street}, ${city}, ${stateVal} ${zip}`,
-      payment: state.paymentMethod==='card'?'Credit / Debit Card':state.paymentMethod==='paypal'?'PayPal Wallet':'Cash on Delivery'
+      total: cartTotal(), address:`${d.firstName} ${d.lastName} · ${d.street}, ${d.city} – ${d.zip}`,
+      payment: state.paymentMethod==='card'?'Credit / Debit Card':state.paymentMethod==='upi'?'UPI':'Cash on Delivery',
+      slot: slotLabel(d.slot),
     });
     state.cart = []; state.promo = 0;
+    state.checkoutStep = 1;
+    state.checkoutData = { firstName:'', lastName:'', email:'', phone:'', street:'', city:'', zip:'', notes:'', slot:'express' };
     persistData();
     toast('Order placed successfully!', 'check-circle');
     go('/orders');
