@@ -1,4 +1,4 @@
-<style>
+
 /* ============================================================
    FRESHMART — DESIGN TOKENS
    ============================================================ */
@@ -244,4 +244,3 @@ p{margin:0;}
   h1{font-size:1.4rem;}
   .grid-2,.grid-3,.grid-4,.grid-5{grid-template-columns:1fr;}
 }
-</style>
