@@ -256,6 +256,85 @@ p{margin:0;}
 @media (max-width:480px){
   h1{font-size:1.4rem;}
   .grid-2,.grid-3,.grid-4,.grid-5{grid-template-columns:1fr;}
+
+}
+
+/* Login Success Popup */
+
+.popup-overlay{
+    position:fixed;
+    top:0;
+    left:0;
+    width:100%;
+    height:100%;
+    background:rgba(0,0,0,.55);
+    display:none;
+    justify-content:center;
+    align-items:center;
+    z-index:9999;
+    animation:fadeIn .3s ease;
+}
+
+.popup-box{
+    background:#fff;
+    width:360px;
+    max-width:90%;
+    border-radius:20px;
+    padding:35px;
+    text-align:center;
+    box-shadow:0 15px 40px rgba(0,0,0,.25);
+    animation:popup .35s ease;
+}
+
+.success-icon{
+    font-size:60px;
+    margin-bottom:15px;
+}
+
+.popup-box h2{
+    color:#28a745;
+    margin-bottom:10px;
+}
+
+.popup-box p{
+    color:#555;
+    line-height:1.6;
+    margin-bottom:25px;
+}
+
+.popup-box button{
+    background:#28a745;
+    color:white;
+    border:none;
+    padding:12px 30px;
+    border-radius:8px;
+    font-size:16px;
+    cursor:pointer;
+    transition:.3s;
+}
+
+.popup-box button:hover{
+    background:#1e7e34;
+}
+
+@keyframes popup{
+    from{
+        transform:scale(.8);
+        opacity:0;
+    }
+    to{
+        transform:scale(1);
+        opacity:1;
+    }
+}
+
+@keyframes fadeIn{
+    from{
+        opacity:0;
+    }
+    to{
+        opacity:1;
+    }
 }
 </style>
 <body>
@@ -270,6 +349,16 @@ p{margin:0;}
 
 <div class="toast" id="toast"></div>
 <div id="modal-root"></div>
+
+<!-- Login Success Popup -->
+<div id="loginSuccessPopup" class="popup-overlay">
+    <div class="popup-box">
+        <div class="success-icon">✅</div>
+        <h2>Sign In Successful!</h2>
+        <p>Welcome back! You have successfully signed in.</p>
+        <button onclick="closeLoginPopup()">Continue</button>
+    </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="./supabase-config.js"></script>
@@ -591,7 +680,14 @@ function toast(msg, icon='check-circle'){
   clearTimeout(window.__t);
   window.__t = setTimeout(()=>el.classList.remove('show'), 2600);
 }
+function showLoginPopup(){
+    document.getElementById("loginSuccessPopup").style.display="flex";
+}
 
+function closeLoginPopup(){
+    document.getElementById("loginSuccessPopup").style.display="none";
+    location.hash="#/home";
+}
 function go(hash){ location.hash = hash; }
 
 /* ============================================================
@@ -1601,8 +1697,7 @@ document.addEventListener('submit', e=>{
     if(match){
       state.currentUser = match;
       persistData();
-      toast('Welcome back, ' + match.name.split(' ')[0] + '!', 'check-circle');
-      go('/home');
+      showLoginPopup();
     } else if(state.registeredUsers.some(u => u.email.toLowerCase() === email)){
       toast('Incorrect password. Try again.', 'alert-circle');
     } else {
